@@ -10,27 +10,28 @@ Enveil uses a SQLCipher-encrypted SQLite vault stored at `~/.enveil/vault.db`. T
 
 ## Installation
 
-### Requirements
-
-- Go 1.22 or later
-- `libsqlcipher-dev` (Ubuntu/Debian) or `sqlcipher` (macOS)
-
-### Ubuntu / Debian
+### Linux and macOS
 ```bash
-sudo apt-get install libsqlcipher-dev
-go install github.com/maximodev/enveil/cmd/enveil@latest
+curl -fsSL https://raw.githubusercontent.com/MaximoCoder/Enveil/main/install.sh | sh
 ```
 
-### macOS
+The installer automatically detects your OS and architecture, downloads the correct binary, verifies its checksum, and installs it to `/usr/local/bin`.
+
+### Windows
+
+Use [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) and run the Linux installer inside it.
+
+### Install from source
+
+Requires Go 1.22 or later and `libsqlcipher-dev` (Ubuntu/Debian) or `sqlcipher` (macOS).
 ```bash
-brew install sqlcipher
-go install github.com/maximodev/enveil/cmd/enveil@latest
+go install github.com/MaximoCoder/Enveil/cmd/enveil@latest
 ```
 
-### Shell integration (zsh)
+### Shell integration
 
-Add this to your `~/.zshrc` to automatically activate projects when you navigate to their directories:
-```zsh
+Add this to your `~/.zshrc` or `~/.bashrc` to automatically show the active project in your prompt when you navigate to a registered directory:
+```bash
 eval "$(enveil shell-init)"
 ```
 
@@ -49,6 +50,14 @@ enveil set DATABASE_URL=postgres://localhost/mydb
 enveil set API_KEY=supersecret123
 ```
 
+### Importing from an existing .env file
+```bash
+enveil import .env
+enveil import .env.local
+```
+
+Imports all variables from the file into the active environment. Optionally deletes the original file after importing.
+
 ### Running commands with variables injected
 ```bash
 enveil run npm run dev
@@ -56,14 +65,20 @@ enveil run python manage.py runserver
 enveil run printenv DATABASE_URL
 ```
 
-Variables are injected into the process environment. No `.env` file is created.
+Variables are injected into the process environment. No `.env` file is created or written to disk.
 
-### Listing variables
+### Getting and listing variables
 ```bash
-enveil list
+enveil list              # show all variable names (values are masked)
+enveil get DATABASE_URL  # get the value of a specific variable
 ```
 
-Shows variable names in the active environment. Values are never displayed.
+### Deleting variables
+```bash
+enveil delete API_KEY
+```
+
+Asks for confirmation before deleting.
 
 ### Managing environments
 ```bash
@@ -86,6 +101,12 @@ enveil export
 
 For tools that require a physical `.env` file. Automatically adds `.env` to `.gitignore`. Delete it when done.
 
+### Managing projects
+```bash
+enveil projects     # list all registered projects
+enveil unregister   # remove the current project from the vault
+```
+
 ### Git hook
 ```bash
 enveil hook install
@@ -93,14 +114,21 @@ enveil hook install
 
 Installs a pre-commit hook that scans staged files for secrets before every commit. Detects known secret formats (AWS keys, Stripe keys, GitHub tokens, connection strings, private keys) and high-entropy strings using Shannon entropy analysis.
 
-To bypass in an emergency:
+Files like `.env` and `.env.local` are always blocked. Files like `.env.example` and `.env.template` are allowed since they are intended to contain placeholder values.
+
+To bypass the hook when you are sure a file is safe:
+```bash
+ENVEIL_SKIP=1 git commit
+```
+
+To bypass all hooks entirely:
 ```bash
 git commit --no-verify
 ```
 
 ### Daemon
 
-The daemon keeps your master key in memory so you don't have to type your password on every command.
+The daemon keeps your master key in memory so you do not have to type your password on every command.
 ```bash
 enveil daemon start    # start daemon, enter password once
 enveil daemon status   # check if daemon is running
