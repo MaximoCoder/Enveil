@@ -64,8 +64,15 @@ func runHookInstall(cmd *cobra.Command, args []string) error {
 }
 
 func runHookRun(cmd *cobra.Command, args []string) error {
-	// Get staged files for the commit
-	output, err := exec.Command("git", "diff", "--cached", "--name-only").Output()
+
+	// Allow skipping via ENVEIL_SKIP=1 environment variable
+	if os.Getenv("ENVEIL_SKIP") == "1" {
+		fmt.Fprintln(os.Stderr, "  Enveil: scan skipped (ENVEIL_SKIP=1)")
+		return nil
+	}
+
+	// Get only added or modified staged files, not deletions
+	output, err := exec.Command("git", "diff", "--cached", "--name-only", "--diff-filter=ACM").Output()
 	if err != nil {
 		return fmt.Errorf("error getting staged files: %w", err)
 	}
@@ -79,6 +86,15 @@ func runHookRun(cmd *cobra.Command, args []string) error {
 
 	for _, file := range stagedFiles {
 		if file == "" {
+			continue
+		}
+
+		// Check if the file is a blocked .env file
+		if isBlockedEnvFile(file) {
+			totalFindings++
+			fmt.Fprintf(os.Stderr, "\n  Enveil: blocked file detected: %s\n", file)
+			fmt.Fprintf(os.Stderr, "    This file should not be committed directly.\n")
+			fmt.Fprintf(os.Stderr, "    Use 'enveil import %s' to import it into the vault instead.\n", file)
 			continue
 		}
 
@@ -106,12 +122,55 @@ func runHookRun(cmd *cobra.Command, args []string) error {
 	}
 
 	if totalFindings > 0 {
-		fmt.Fprintf(os.Stderr, "\n  Commit blocked. Move secrets to vault with 'enveil set'\n")
-		fmt.Fprintf(os.Stderr, "  If you are sure it is not a secret: git commit --no-verify\n\n")
+		fmt.Fprintf(os.Stderr, "\n  Commit blocked by Enveil.\n")
+		fmt.Fprintf(os.Stderr, "  To fix: move secrets to vault with 'enveil set' or 'enveil import'\n")
+		fmt.Fprintf(os.Stderr, "\n  To override (only if you know what you are doing):\n")
+		fmt.Fprintf(os.Stderr, "    ENVEIL_SKIP=1 git commit\n")
+		fmt.Fprintf(os.Stderr, "    git commit --no-verify\n\n")
 		os.Exit(1)
 	}
 
 	return nil
+}
+
+// isBlockedEnvFile returns true for .env files that should never be committed
+func isBlockedEnvFile(filename string) bool {
+	base := filepath.Base(filename)
+
+	// Always allow these patterns - they are templates with fake values
+	allowed := []string{
+		".env.example",
+		".env.template",
+		".env.sample",
+		".env.test",
+		".env.development",
+		".env.staging",
+	}
+	for _, a := range allowed {
+		if base == a {
+			return false
+		}
+	}
+
+	// Block these patterns - they contain real secrets
+	blocked := []string{
+		".env",
+		".env.local",
+		".env.production",
+		".env.prod",
+	}
+	for _, b := range blocked {
+		if base == b {
+			return true
+		}
+	}
+
+	// Block any .env.*.local pattern
+	if strings.HasPrefix(base, ".env.") && strings.HasSuffix(base, ".local") {
+		return true
+	}
+
+	return false
 }
 
 // isIgnoredFile returns true for files that are known to contain high entropy non-secret content
