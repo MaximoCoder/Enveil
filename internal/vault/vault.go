@@ -13,6 +13,13 @@ type Vault struct {
 	db *sql.DB
 }
 
+// Project represents a registered project
+type Project struct {
+	ID   int64
+	Name string
+	Path string
+}
+
 // Open opens or creates the vault at the given path with the given master key
 func Open(path string, masterKey string) (*Vault, error) {
 	// The DSN tells SQLite where the file is and which key to use
@@ -220,4 +227,117 @@ func (v *Vault) ListEnvironments(projectID int64) ([]string, error) {
 	}
 
 	return envs, nil
+}
+
+// VariableExists checks whether a variable exists in an environment
+func (v *Vault) VariableExists(environmentID int64, key string) (bool, error) {
+	var count int
+	err := v.db.QueryRow(
+		"SELECT COUNT(*) FROM variables WHERE environment_id = ? AND key = ?",
+		environmentID, key,
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("error checking variable: %w", err)
+	}
+	return count > 0, nil
+}
+
+// DeleteVariable removes a variable from an environment
+func (v *Vault) DeleteVariable(environmentID int64, key string) error {
+	_, err := v.db.Exec(
+		"DELETE FROM variables WHERE environment_id = ? AND key = ?",
+		environmentID, key,
+	)
+	if err != nil {
+		return fmt.Errorf("error deleting variable: %w", err)
+	}
+	return nil
+}
+
+// GetVariable returns the value of a single variable
+func (v *Vault) GetVariable(environmentID int64, key string) (string, error) {
+	var value string
+	err := v.db.QueryRow(
+		"SELECT value FROM variables WHERE environment_id = ? AND key = ?",
+		environmentID, key,
+	).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("error getting variable: %w", err)
+	}
+	return value, nil
+}
+
+// ListProjects returns all registered projects
+func (v *Vault) ListProjects() ([]Project, error) {
+	rows, err := v.db.Query(
+		"SELECT id, name, path FROM projects ORDER BY created_at ASC",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error listing projects: %w", err)
+	}
+	defer rows.Close()
+
+	var projects []Project
+	for rows.Next() {
+		var p Project
+		if err := rows.Scan(&p.ID, &p.Name, &p.Path); err != nil {
+			return nil, fmt.Errorf("error reading project: %w", err)
+		}
+		projects = append(projects, p)
+	}
+
+	return projects, nil
+}
+
+// DeleteProject removes a project and all its environments and variables
+func (v *Vault) DeleteProject(projectID int64) error {
+	// Get all environment IDs for this project
+	rows, err := v.db.Query(
+		"SELECT id FROM environments WHERE project_id = ?", projectID,
+	)
+	if err != nil {
+		return fmt.Errorf("error getting environments: %w", err)
+	}
+	defer rows.Close()
+
+	var envIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("error reading environment: %w", err)
+		}
+		envIDs = append(envIDs, id)
+	}
+	rows.Close()
+
+	// Delete all variables for each environment
+	for _, envID := range envIDs {
+		_, err := v.db.Exec(
+			"DELETE FROM variables WHERE environment_id = ?", envID,
+		)
+		if err != nil {
+			return fmt.Errorf("error deleting variables: %w", err)
+		}
+	}
+
+	// Delete all environments
+	_, err = v.db.Exec(
+		"DELETE FROM environments WHERE project_id = ?", projectID,
+	)
+	if err != nil {
+		return fmt.Errorf("error deleting environments: %w", err)
+	}
+
+	// Delete the project
+	_, err = v.db.Exec(
+		"DELETE FROM projects WHERE id = ?", projectID,
+	)
+	if err != nil {
+		return fmt.Errorf("error deleting project: %w", err)
+	}
+
+	return nil
 }

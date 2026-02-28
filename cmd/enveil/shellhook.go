@@ -38,16 +38,13 @@ func runShellHook(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Intentar obtener la key del daemon
-	// Si el daemon no esta corriendo no hacemos nada, no pedimos password
+	// Always verify the current directory against the vault
+	// Never show a project badge based on config alone
 	masterKeyHex, ok := tryGetKeyFromDaemon()
 	if !ok {
-		// Sin daemon no podemos verificar el vault, pero podemos
-		// al menos actualizar el proyecto activo si el directorio esta en config
-		if cfg.ActiveProject != "" {
-			fmt.Printf("export ENVEIL_PROJECT=%s\n", cfg.ActiveProject)
-			fmt.Printf("export ENVEIL_ENV=%s\n", cfg.ActiveEnv)
-		}
+		// Without daemon we cannot verify, clear the badge
+		fmt.Println("export ENVEIL_PROJECT=")
+		fmt.Println("export ENVEIL_ENV=")
 		return nil
 	}
 
@@ -59,13 +56,13 @@ func runShellHook(cmd *cobra.Command, args []string) error {
 
 	projectID, name, err := v.GetProjectByPath(cwd)
 	if err != nil || projectID == 0 {
-		// Directorio no registrado, limpiar variables
+		// Directory not registered, clear the badge
 		fmt.Println("export ENVEIL_PROJECT=")
 		fmt.Println("export ENVEIL_ENV=")
 		return nil
 	}
 
-	// Actualizar config si el proyecto cambio
+	// Update config if project changed
 	if cfg.ActiveProject != name {
 		cfg.ActiveProject = name
 		cfg.ActiveEnv = "development"

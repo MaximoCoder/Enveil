@@ -7,10 +7,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const version = "0.1.0"
+
 var rootCmd = &cobra.Command{
-	Use:   "enveil",
-	Short: "Secure environment variable manager",
-	Long:  "Enveil protects your secrets by keeping them encrypted and out of your filesystem.",
+	Use:     "enveil",
+	Short:   "Secure environment variable manager",
+	Long:    "Enveil protects your secrets by keeping them encrypted and out of your filesystem.",
+	Version: version,
 }
 
 func main() {
