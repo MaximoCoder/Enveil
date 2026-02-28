@@ -1,3 +1,4 @@
 enveil
 go.sum
 EOF
+*.env
