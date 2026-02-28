@@ -77,7 +77,7 @@ func runShellHook(cmd *cobra.Command, args []string) error {
 func runShellInit(cmd *cobra.Command, args []string) error {
 	script := `
 	# Enveil shell integration
-	# Add this to your ~/.zshrc:
+	# Add this to your ~/.zshrc or ~/.bashrc:
 	#   eval "$(enveil shell-init)"
 
 	_enveil_hook() {
@@ -88,19 +88,38 @@ func runShellInit(cmd *cobra.Command, args []string) error {
 	fi
 	}
 
-	# Run hook on directory change
+	# Detect shell and register hook accordingly
+	if [ -n "$ZSH_VERSION" ]; then
+	# zsh
 	autoload -U add-zsh-hook
 	add-zsh-hook chpwd _enveil_hook
+	elif [ -n "$BASH_VERSION" ]; then
+	# bash
+	if [[ "$PROMPT_COMMAND" != *"_enveil_hook"* ]]; then
+		PROMPT_COMMAND="_enveil_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+	fi
+	fi
 
-	# Show enveil status on the right side of the prompt
+	# Show enveil status in prompt
 	_enveil_prompt() {
 	if [ -n "$ENVEIL_PROJECT" ]; then
+		if [ -n "$ZSH_VERSION" ]; then
 		echo "%F{cyan}[${ENVEIL_PROJECT}/${ENVEIL_ENV}]%f"
+		else
+		echo "\[\033[0;36m\][${ENVEIL_PROJECT}/${ENVEIL_ENV}]\[\033[0m\]"
+		fi
 	fi
 	}
 
-	# Use RPROMPT so it doesn't interfere with existing themes
+	if [ -n "$ZSH_VERSION" ]; then
+	# zsh - use RPROMPT
 	RPROMPT='$(_enveil_prompt)'
+	elif [ -n "$BASH_VERSION" ]; then
+	# bash - prepend to PS1
+	if [[ "$PS1" != *'$(_enveil_prompt)'* ]]; then
+		PS1='$(_enveil_prompt)'"$PS1"
+	fi
+	fi
 
 	# Run once on shell startup for current directory
 	_enveil_hook
