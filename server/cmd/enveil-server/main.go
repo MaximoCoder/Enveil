@@ -16,7 +16,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 type Server struct {
 	vault        *vault.Vault
