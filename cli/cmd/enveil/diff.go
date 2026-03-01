@@ -3,10 +3,11 @@ package main
 import (
 	"fmt"
 
-	"github.com/fatih/color"
-	"github.com/MaximoCoder/enveil-core/config"
+	"github.com/MaximoCoder/enveil-cli/internal/serverclient"
 	"github.com/MaximoCoder/enveil-cli/internal/ui"
+	"github.com/MaximoCoder/enveil-core/config"
 	"github.com/MaximoCoder/enveil-core/vault"
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -34,51 +35,62 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("enveil is not initialized, run 'enveil init' first")
 	}
 
-	masterKeyHex, err := promptAndDeriveKey(cfg)
-	if err != nil {
-		return err
-	}
+	var vars1, vars2 map[string]string
 
-	v, err := vault.Open(cfg.VaultPath, masterKeyHex)
-	if err != nil {
-		return err
-	}
-	defer v.Close()
+	if cfg.HasServer() {
+		client := serverclient.New(cfg.ServerURL, cfg.ServerAPIKey)
+		vars1, err = client.GetVariables(cfg.ActiveProject, env1Name)
+		if err != nil {
+			return fmt.Errorf("error fetching '%s' from server: %w", env1Name, err)
+		}
+		vars2, err = client.GetVariables(cfg.ActiveProject, env2Name)
+		if err != nil {
+			return fmt.Errorf("error fetching '%s' from server: %w", env2Name, err)
+		}
+	} else {
+		masterKeyHex, err := promptAndDeriveKey(cfg)
+		if err != nil {
+			return err
+		}
 
-	projectID, _, err := v.GetProjectByPath(getCurrentDir())
-	if err != nil {
-		return err
-	}
-	if projectID == 0 {
-		return fmt.Errorf("this directory is not registered, run 'enveil init'")
-	}
+		v, err := vault.Open(cfg.VaultPath, masterKeyHex)
+		if err != nil {
+			return err
+		}
+		defer v.Close()
 
-	// Obtener IDs de ambos entornos
-	env1ID, err := v.GetEnvironment(projectID, env1Name)
-	if err != nil {
-		return err
-	}
-	if env1ID == 0 {
-		return fmt.Errorf("environment '%s' does not exist", env1Name)
-	}
+		projectID, _, err := v.GetProjectByPath(getCurrentDir())
+		if err != nil {
+			return err
+		}
+		if projectID == 0 {
+			return fmt.Errorf("this directory is not registered, run 'enveil init'")
+		}
 
-	env2ID, err := v.GetEnvironment(projectID, env2Name)
-	if err != nil {
-		return err
-	}
-	if env2ID == 0 {
-		return fmt.Errorf("environment '%s' does not exist", env2Name)
-	}
+		env1ID, err := v.GetEnvironment(projectID, env1Name)
+		if err != nil {
+			return err
+		}
+		if env1ID == 0 {
+			return fmt.Errorf("environment '%s' does not exist", env1Name)
+		}
 
-	// Get IDs of both environments
-	vars1, err := v.GetVariables(env1ID)
-	if err != nil {
-		return err
-	}
+		env2ID, err := v.GetEnvironment(projectID, env2Name)
+		if err != nil {
+			return err
+		}
+		if env2ID == 0 {
+			return fmt.Errorf("environment '%s' does not exist", env2Name)
+		}
 
-	vars2, err := v.GetVariables(env2ID)
-	if err != nil {
-		return err
+		vars1, err = v.GetVariables(env1ID)
+		if err != nil {
+			return err
+		}
+		vars2, err = v.GetVariables(env2ID)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Compare
@@ -87,7 +99,6 @@ func runDiff(cmd *cobra.Command, args []string) error {
 	different := []string{}
 	same := []string{}
 
-	// Check keys from env1
 	for k, v1 := range vars1 {
 		v2, exists := vars2[k]
 		if !exists {
@@ -99,14 +110,12 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Check keys that only exist in env2
 	for k := range vars2 {
 		if _, exists := vars1[k]; !exists {
 			onlyIn2 = append(onlyIn2, k)
 		}
 	}
 
-	// Display result
 	ui.Header(fmt.Sprintf("Diff  %s vs %s", env1Name, env2Name))
 
 	if len(onlyIn1) == 0 && len(onlyIn2) == 0 && len(different) == 0 {

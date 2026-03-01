@@ -3,8 +3,9 @@ package main
 import (
 	"fmt"
 
-	"github.com/MaximoCoder/enveil-core/config"
+	"github.com/MaximoCoder/enveil-cli/internal/serverclient"
 	"github.com/MaximoCoder/enveil-cli/internal/ui"
+	"github.com/MaximoCoder/enveil-core/config"
 	"github.com/MaximoCoder/enveil-core/vault"
 	"github.com/spf13/cobra"
 )
@@ -51,6 +52,24 @@ func runEnvList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("enveil is not initialized, run 'enveil init' first")
 	}
 
+	ui.Header(fmt.Sprintf("Environments  %s", ui.EnvBadge(cfg.ActiveProject, cfg.ActiveEnv)))
+
+	if cfg.HasServer() {
+		client := serverclient.New(cfg.ServerURL, cfg.ServerAPIKey)
+		envs, err := client.ListEnvironments(cfg.ActiveProject)
+		if err != nil {
+			return fmt.Errorf("error fetching environments from server: %w", err)
+		}
+		for _, e := range envs {
+			if e == cfg.ActiveEnv {
+				fmt.Printf("  %s %s\n", ui.ActiveMarker(), e)
+			} else {
+				fmt.Printf("  %s %s\n", ui.InactiveMarker(), e)
+			}
+		}
+		return nil
+	}
+
 	masterKeyHex, err := promptAndDeriveKey(cfg)
 	if err != nil {
 		return err
@@ -75,7 +94,6 @@ func runEnvList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ui.Header(fmt.Sprintf("Environments  %s", ui.EnvBadge(cfg.ActiveProject, cfg.ActiveEnv)))
 	for _, e := range envs {
 		if e == cfg.ActiveEnv {
 			fmt.Printf("  %s %s\n", ui.ActiveMarker(), e)
@@ -83,7 +101,6 @@ func runEnvList(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  %s %s\n", ui.InactiveMarker(), e)
 		}
 	}
-
 	return nil
 }
 
@@ -97,6 +114,15 @@ func runEnvAdd(cmd *cobra.Command, args []string) error {
 
 	if !cfg.IsInitialized() {
 		return fmt.Errorf("enveil is not initialized, run 'enveil init' first")
+	}
+
+	if cfg.HasServer() {
+		client := serverclient.New(cfg.ServerURL, cfg.ServerAPIKey)
+		if err := client.EnsureEnvironment(cfg.ActiveProject, name); err != nil {
+			return err
+		}
+		ui.Success("Environment '%s' created in project '%s'", name, cfg.ActiveProject)
+		return nil
 	}
 
 	masterKeyHex, err := promptAndDeriveKey(cfg)
@@ -118,7 +144,6 @@ func runEnvAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("this directory is not registered, run 'enveil init'")
 	}
 
-	// Verificar que no exista ya
 	envID, err := v.GetEnvironment(projectID, name)
 	if err != nil {
 		return err
@@ -148,6 +173,32 @@ func runEnvUse(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("enveil is not initialized, run 'enveil init' first")
 	}
 
+	if cfg.HasServer() {
+		// Verify environment exists on server
+		client := serverclient.New(cfg.ServerURL, cfg.ServerAPIKey)
+		envs, err := client.ListEnvironments(cfg.ActiveProject)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, e := range envs {
+			if e == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("environment '%s' does not exist, create it with 'enveil env add %s'", name, name)
+		}
+
+		cfg.ActiveEnv = name
+		if err := cfg.Save(); err != nil {
+			return err
+		}
+		ui.Success("Active environment switched to '%s'", name)
+		return nil
+	}
+
 	masterKeyHex, err := promptAndDeriveKey(cfg)
 	if err != nil {
 		return err
@@ -167,7 +218,6 @@ func runEnvUse(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("this directory is not registered, run 'enveil init'")
 	}
 
-	// Verificar que el entorno existe
 	envID, err := v.GetEnvironment(projectID, name)
 	if err != nil {
 		return err

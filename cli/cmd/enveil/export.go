@@ -6,8 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/MaximoCoder/enveil-core/config"
+	"github.com/MaximoCoder/enveil-cli/internal/serverclient"
 	"github.com/MaximoCoder/enveil-cli/internal/ui"
+	"github.com/MaximoCoder/enveil-core/config"
 	"github.com/MaximoCoder/enveil-core/vault"
 	"github.com/spf13/cobra"
 )
@@ -32,36 +33,46 @@ func runExport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("enveil is not initialized, run 'enveil init' first")
 	}
 
-	masterKeyHex, err := promptAndDeriveKey(cfg)
-	if err != nil {
-		return err
-	}
+	var vars map[string]string
 
-	v, err := vault.Open(cfg.VaultPath, masterKeyHex)
-	if err != nil {
-		return err
-	}
-	defer v.Close()
+	if cfg.HasServer() {
+		client := serverclient.New(cfg.ServerURL, cfg.ServerAPIKey)
+		vars, err = client.GetVariables(cfg.ActiveProject, cfg.ActiveEnv)
+		if err != nil {
+			return fmt.Errorf("error fetching variables from server: %w", err)
+		}
+	} else {
+		masterKeyHex, err := promptAndDeriveKey(cfg)
+		if err != nil {
+			return err
+		}
 
-	projectID, _, err := v.GetProjectByPath(getCurrentDir())
-	if err != nil {
-		return err
-	}
-	if projectID == 0 {
-		return fmt.Errorf("this directory is not registered, run 'enveil init'")
-	}
+		v, err := vault.Open(cfg.VaultPath, masterKeyHex)
+		if err != nil {
+			return err
+		}
+		defer v.Close()
 
-	envID, err := v.GetEnvironment(projectID, cfg.ActiveEnv)
-	if err != nil {
-		return err
-	}
-	if envID == 0 {
-		return fmt.Errorf("environment '%s' not found", cfg.ActiveEnv)
-	}
+		projectID, _, err := v.GetProjectByPath(getCurrentDir())
+		if err != nil {
+			return err
+		}
+		if projectID == 0 {
+			return fmt.Errorf("this directory is not registered, run 'enveil init'")
+		}
 
-	vars, err := v.GetVariables(envID)
-	if err != nil {
-		return err
+		envID, err := v.GetEnvironment(projectID, cfg.ActiveEnv)
+		if err != nil {
+			return err
+		}
+		if envID == 0 {
+			return fmt.Errorf("environment '%s' not found", cfg.ActiveEnv)
+		}
+
+		vars, err = v.GetVariables(envID)
+		if err != nil {
+			return err
+		}
 	}
 
 	if len(vars) == 0 {
@@ -75,7 +86,6 @@ func runExport(cmd *cobra.Command, args []string) error {
 	lines = append(lines, "")
 
 	for k, val := range vars {
-		// Wrap values containing special characters in quotes
 		if strings.ContainsAny(val, " \t\n#$") {
 			lines = append(lines, fmt.Sprintf(`%s="%s"`, k, val))
 		} else {
@@ -85,13 +95,11 @@ func runExport(cmd *cobra.Command, args []string) error {
 
 	content := strings.Join(lines, "\n") + "\n"
 
-	// Write the .env file
 	envFilePath := filepath.Join(getCurrentDir(), ".env")
 	if err := os.WriteFile(envFilePath, []byte(content), 0600); err != nil {
 		return fmt.Errorf("error writing .env: %w", err)
 	}
 
-	// Add .env to .gitignore if it exists
 	if err := ensureGitignore(getCurrentDir()); err != nil {
 		ui.Warning("Could not update .gitignore: %v", err)
 	}
@@ -99,6 +107,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 	ui.Success(".env generated at %s", envFilePath)
 	ui.Warning("Delete it when done with: rm .env")
 	return nil
+
 }
 
 // ensureGitignore adds .env to .gitignore if its not already there

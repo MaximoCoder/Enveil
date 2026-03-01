@@ -166,3 +166,22 @@ func (c *Client) DeleteVariable(project, env, key string) error {
 	}
 	return nil
 }
+
+// ListEnvironments returns all environments for a project on the server
+func (c *Client) ListEnvironments(project string) ([]string, error) {
+	req, _ := http.NewRequest("GET", c.baseURL+"/projects/"+project+"/envs", nil)
+	req.Header.Set("X-API-Key", c.apiKey)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error listing environments: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var envs []string
+	if err := json.NewDecoder(resp.Body).Decode(&envs); err != nil {
+		return nil, fmt.Errorf("error decoding response: %w", err)
+	}
+
+	return envs, nil
+}
