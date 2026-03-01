@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version = "0.2.0"
+const version = "0.2.1"
 
 var rootCmd = &cobra.Command{
 	Use:     "enveil",
