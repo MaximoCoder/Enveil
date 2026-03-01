@@ -8,6 +8,8 @@ Instead of storing secrets in `.env` files that can be accidentally committed, l
 
 Enveil uses a SQLCipher-encrypted SQLite vault stored at `~/.enveil/vault.db`. The master key never touches disk — it lives only in memory while the daemon is running, or is derived fresh from your password on each command. Variables are organized by project and environment, making it easy to manage development, staging, and production secrets separately.
 
+For teams, Enveil includes a self-hosted server that centralizes secrets across developers. Variables are encrypted on the client before being sent to the server — the server never sees plaintext values.
+
 ## Installation
 
 ### Linux and macOS
@@ -25,7 +27,7 @@ Use [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) and run the Li
 
 Requires Go 1.22 or later and `libsqlcipher-dev` (Ubuntu/Debian) or `sqlcipher` (macOS).
 ```bash
-go install github.com/MaximoCoder/Enveil/cmd/enveil@latest
+go install github.com/MaximoCoder/Enveil/cli/cmd/enveil@latest
 ```
 
 ### Shell integration
@@ -137,13 +139,62 @@ enveil daemon stop     # stop daemon, key is removed from memory
 
 The daemon is optional. Without it, Enveil asks for your password on each command.
 
+## Team server
+
+The Enveil server allows teams to share encrypted secrets across developers without relying on `.env` files, chat messages, or shared drives.
+
+### How it works
+
+The server stores all variables encrypted. Values are encrypted on the client before being sent over the network — the server never sees plaintext values. Even if the server is compromised, secrets remain unreadable without the API key.
+
+### Installing the server
+
+Download the server binary from the [latest release](https://github.com/MaximoCoder/Enveil/releases/latest) for your platform (`enveil-server-linux-amd64`, `enveil-server-darwin-arm64`, etc.) and place it in your PATH.
+
+### Running the server
+```bash
+ENVEIL_API_KEY=your-secret-key \
+ENVEIL_VAULT_PASSWORD=your-vault-password \
+ENVEIL_PORT=8080 \
+enveil-server
+```
+
+The server stores its vault at `~/.enveil-server/vault.db` by default. You can override this with `ENVEIL_VAULT_PATH`.
+
+For production, put the server behind a reverse proxy like nginx with HTTPS enabled.
+
+### Connecting the CLI to the server
+```bash
+enveil server connect http://your-server:8080 --key your-secret-key
+```
+
+Once connected, all CLI commands use the server instead of the local vault. The connection settings are saved in `~/.enveil/config.json`.
+```bash
+enveil server status      # check connection
+enveil server disconnect  # switch back to local vault
+```
+
+### Team workflow
+
+The admin sets up the server once and shares the server URL and API key with the team. Each developer runs:
+```bash
+enveil server connect http://192.168.1.100:8080 --key shared-api-key
+enveil init
+```
+
+From that point, all `set`, `get`, `list`, `run`, `import`, `export`, `diff`, and `env` commands operate against the shared server. Variables set by one developer are immediately available to all others.
+
 ## Project structure
 ```
 ~/.enveil/
-  vault.db       # SQLCipher encrypted database
-  config.json    # Active project and environment (no secrets)
+  vault.db       # SQLCipher encrypted database (local mode)
+  config.json    # Active project, environment, and server connection
   daemon.sock    # Unix socket (only while daemon is running)
   daemon.pid     # Daemon process ID (only while daemon is running)
+
+~/.enveil-server/
+  vault.db       # Server vault (on the machine running enveil-server)
+  salt           # Key derivation salt
 ```
 
 ## Security model
@@ -151,6 +202,7 @@ The daemon is optional. Without it, Enveil asks for your password on each comman
 - **Vault encryption**: AES-256 via SQLCipher. The entire database file is encrypted, including table names, project names, and variable names.
 - **Key derivation**: Argon2id with 64MB memory, 4 threads. Resistant to GPU and ASIC brute-force attacks.
 - **Master key**: Never written to disk. Lives in memory only while the daemon is running.
+- **Transport encryption**: Values are encrypted with AES-GCM on the client before being sent to the server. The server stores and returns ciphertext only.
 - **File permissions**: Vault and config files are created with `0600` permissions (owner read/write only).
 - **Process injection**: Variables are passed directly to child process environments via `syscall.Exec`, never written to temporary files.
 - **Secret scanning**: Pre-commit hook combines pattern matching and Shannon entropy analysis to catch secrets before they reach version control.
