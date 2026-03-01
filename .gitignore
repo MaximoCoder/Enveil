@@ -1,3 +1,4 @@
 enveil
 EOF
 *.env
+.env
