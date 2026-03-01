@@ -2,3 +2,4 @@ enveil
 EOF
 *.env
 .env
+enveil-server

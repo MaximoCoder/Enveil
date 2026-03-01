@@ -341,3 +341,22 @@ func (v *Vault) DeleteProject(projectID int64) error {
 
 	return nil
 }
+
+// GetProjectByName looks up a project by its name
+func (v *Vault) GetProjectByName(name string) (int64, string, error) {
+	var id int64
+	var path string
+
+	err := v.db.QueryRow(
+		"SELECT id, path FROM projects WHERE name = ?", name,
+	).Scan(&id, &path)
+
+	if err == sql.ErrNoRows {
+		return 0, "", nil
+	}
+	if err != nil {
+		return 0, "", fmt.Errorf("error looking up project: %w", err)
+	}
+
+	return id, path, nil
+}

@@ -13,6 +13,8 @@ type Config struct {
 	Salt           string `json:"salt"`
 	ActiveProject  string `json:"active_project,omitempty"`
 	ActiveEnv      string `json:"active_env,omitempty"`
+	ServerURL     string `json:"server_url,omitempty"`
+	ServerAPIKey  string `json:"server_api_key,omitempty"`
 }
 
 // enveilDir returns the path to the ~/.enveil director
@@ -98,4 +100,9 @@ func (c *Config) Save() error {
 // IsInitialized returns whether Enveil has been set up for the first time
 func (c *Config) IsInitialized() bool {
 	return c.VaultPath != "" && c.Salt != ""
+}
+
+// HasServer returns whether a server is configured
+func (c *Config) HasServer() bool {
+	return c.ServerURL != "" && c.ServerAPIKey != ""
 }
