@@ -43,7 +43,7 @@ func (c *Client) Health() error {
 
 // EnsureProject creates a project on the server if it does not exist
 func (c *Client) EnsureProject(name string) error {
-	body, _ := json.Marshal(map[string]string{"name": name})
+	body, _ := json.Marshal(map[string]string{"name": name, "path": name})
 	req, _ := http.NewRequest("POST", c.baseURL+"/projects", bytes.NewBuffer(body))
 	req.Header.Set("X-API-Key", c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
@@ -54,6 +54,29 @@ func (c *Client) EnsureProject(name string) error {
 	}
 	defer resp.Body.Close()
 	return nil
+}
+
+// ListProjects returns all projects on the server
+func (c *Client) ListProjects() ([]map[string]any, error) {
+	req, _ := http.NewRequest("GET", c.baseURL+"/projects", nil)
+	req.Header.Set("X-API-Key", c.apiKey)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error listing projects: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("server returned %d", resp.StatusCode)
+	}
+
+	var projects []map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
+		return nil, fmt.Errorf("error decoding response: %w", err)
+	}
+
+	return projects, nil
 }
 
 // EnsureEnvironment creates an environment on the server if it does not exist

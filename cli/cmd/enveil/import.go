@@ -6,8 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/MaximoCoder/enveil-core/config"
+	"github.com/MaximoCoder/enveil-cli/internal/serverclient"
 	"github.com/MaximoCoder/enveil-cli/internal/ui"
+	"github.com/MaximoCoder/enveil-core/config"
 	"github.com/MaximoCoder/enveil-core/vault"
 	"github.com/spf13/cobra"
 )
@@ -17,7 +18,7 @@ var importCmd = &cobra.Command{
 	Short: "Import variables from a .env file into the active environment",
 	Args:  cobra.MaximumNArgs(1),
 	RunE:  runImport,
-}
+}  
 
 func init() {
 	rootCmd.AddCommand(importCmd)
@@ -59,7 +60,41 @@ func runImport(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Open vault
+	// Use server if configured
+	if cfg.HasServer() {
+		client := serverclient.New(cfg.ServerURL, cfg.ServerAPIKey)
+		if err := client.EnsureProject(cfg.ActiveProject); err != nil {
+			return err
+		}
+		if err := client.EnsureEnvironment(cfg.ActiveProject, cfg.ActiveEnv); err != nil {
+			return err
+		}
+
+		imported := 0
+		for key, value := range vars {
+			if err := client.SetVariable(cfg.ActiveProject, cfg.ActiveEnv, key, value); err != nil {
+				ui.Warning("Could not import '%s': %v", key, err)
+				continue
+			}
+			imported++
+		}
+
+		ui.Success("Imported %d variable(s) into %s", imported, ui.EnvBadge(cfg.ActiveProject, cfg.ActiveEnv))
+
+		fmt.Print("\n  Delete the original file? [y/N]: ")
+		var response string
+		fmt.Scanln(&response)
+		if strings.ToLower(response) == "y" {
+			if err := os.Remove(filePath); err != nil {
+				ui.Warning("Could not delete '%s': %v", filePath, err)
+			} else {
+				ui.Success("'%s' deleted", filePath)
+			}
+		}
+		return nil
+	}
+
+	// Open vault (local mode)
 	masterKeyHex, err := promptAndDeriveKey(cfg)
 	if err != nil {
 		return err

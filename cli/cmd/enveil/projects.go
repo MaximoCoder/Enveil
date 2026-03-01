@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/MaximoCoder/enveil-core/config"
+	"github.com/MaximoCoder/enveil-cli/internal/serverclient"
 	"github.com/MaximoCoder/enveil-cli/internal/ui"
+	"github.com/MaximoCoder/enveil-core/config"
 	"github.com/MaximoCoder/enveil-core/vault"
 	"github.com/spf13/cobra"
 )
@@ -37,6 +38,36 @@ func runProjects(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("enveil is not initialized, run 'enveil init' first")
 	}
 
+	ui.Header("Registered Projects")
+
+	if cfg.HasServer() {
+		client := serverclient.New(cfg.ServerURL, cfg.ServerAPIKey)
+		projects, err := client.ListProjects()
+		if err != nil {
+			return fmt.Errorf("error fetching projects from server: %w", err)
+		}
+
+		if len(projects) == 0 {
+			ui.Muted("  No projects on server.")
+			fmt.Println()
+			return nil
+		}
+
+		for _, p := range projects {
+			name, _ := p["Name"].(string)
+			if name == cfg.ActiveProject {
+				fmt.Printf("  %s %s\n", ui.ActiveMarker(), name)
+			} else {
+				fmt.Printf("  %s %s\n", ui.InactiveMarker(), name)
+			}
+		}
+
+		fmt.Println()
+		ui.Muted("  %d project(s) total", len(projects))
+		fmt.Println()
+		return nil
+	}
+
 	masterKeyHex, err := promptAndDeriveKey(cfg)
 	if err != nil {
 		return err
@@ -52,8 +83,6 @@ func runProjects(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-
-	ui.Header("Registered Projects")
 
 	if len(projects) == 0 {
 		ui.Muted("  No projects registered.")
