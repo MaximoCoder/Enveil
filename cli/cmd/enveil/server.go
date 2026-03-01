@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
-	"github.com/MaximoCoder/enveil-core/config"
 	"github.com/MaximoCoder/enveil-cli/internal/serverclient"
 	"github.com/MaximoCoder/enveil-cli/internal/ui"
+	"github.com/MaximoCoder/enveil-core/config"
+	"github.com/MaximoCoder/enveil-core/vault"
 	"github.com/spf13/cobra"
 )
 
@@ -34,11 +36,19 @@ var serverStatusCmd = &cobra.Command{
 	RunE:  runServerStatus,
 }
 
+var serverUseProjectCmd = &cobra.Command{
+	Use:   "use-project <name>",
+	Short: "Associate the current directory with an existing project on the server",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runServerUseProject,
+}
+
 func init() {
 	rootCmd.AddCommand(serverCmd)
 	serverCmd.AddCommand(serverConnectCmd)
 	serverCmd.AddCommand(serverDisconnectCmd)
 	serverCmd.AddCommand(serverStatusCmd)
+	serverCmd.AddCommand(serverUseProjectCmd)
 
 	serverConnectCmd.Flags().String("key", "", "API key for authentication")
 	serverConnectCmd.MarkFlagRequired("key")
@@ -108,4 +118,97 @@ func runServerStatus(cmd *cobra.Command, args []string) error {
 
 	ui.Success("Connected to %s", cfg.ServerURL)
 	return nil
+}
+
+func runServerUseProject(cmd *cobra.Command, args []string) error {
+	 name := args[0]
+
+    cfg, err := config.Load()
+    if err != nil {
+        return err
+    }
+
+    if !cfg.HasServer() {
+        return fmt.Errorf("no server configured, run 'enveil server connect' first")
+    }
+
+    // Verificar que el proyecto existe en el servidor
+    client := serverclient.New(cfg.ServerURL, cfg.ServerAPIKey)
+    projects, err := client.ListProjects()
+    if err != nil {
+        return fmt.Errorf("error fetching projects from server: %w", err)
+    }
+
+    found := false
+    for _, p := range projects {
+        if pname, ok := p["Name"].(string); ok && pname == name {
+            found = true
+            break
+        }
+    }
+
+    if !found {
+        var names []string
+        for _, p := range projects {
+            if pname, ok := p["Name"].(string); ok {
+                names = append(names, pname)
+            }
+        }
+        return fmt.Errorf("project '%s' not found on server. Available: %s", name, strings.Join(names, ", "))
+    }
+
+    // Abrir el vault local y registrar el directorio
+    cwd, err := os.Getwd()
+    if err != nil {
+        return fmt.Errorf("error getting current directory: %w", err)
+    }
+
+    masterKeyHex, err := promptAndDeriveKey(cfg)
+    if err != nil {
+        return err
+    }
+
+    v, err := vault.Open(cfg.VaultPath, masterKeyHex)
+    if err != nil {
+        return err
+    }
+    defer v.Close()
+
+    // Verificar si el directorio ya está registrado
+    projectID, existingName, err := v.GetProjectByPath(cwd)
+    if err != nil {
+        return err
+    }
+
+    if projectID != 0 {
+        if existingName == name {
+            ui.Warning("Directory already associated with project '%s'", name)
+            return nil
+        }
+        return fmt.Errorf("directory already registered as project '%s', unregister it first", existingName)
+    }
+
+    // Registrar en el vault local
+    projectID, err = v.CreateProject(name, cwd)
+    if err != nil {
+        return err
+    }
+
+    _, err = v.CreateEnvironment(projectID, "development")
+    if err != nil {
+        return err
+    }
+
+    // Actualizar config global
+    cfg.ActiveProject = name
+    if cfg.ActiveEnv == "" {
+        cfg.ActiveEnv = "development"
+    }
+    if err := cfg.Save(); err != nil {
+        return err
+    }
+
+    ui.Success("Directory associated with server project '%s'", name)
+    ui.Info("Run 'enveil list' to see available variables")
+    return nil
 }
