@@ -17,6 +17,12 @@ var serverCmd = &cobra.Command{
 	Short: "Manage server connection",
 }
 
+var serverPushCmd = &cobra.Command{
+	Use:   "push",
+	Short: "Push the current project and its variables to the server",
+	RunE:  runServerPush,
+}
+
 var serverConnectCmd = &cobra.Command{
 	Use:   "connect <url>",
 	Short: "Connect to an Enveil server",
@@ -45,6 +51,7 @@ var serverUseProjectCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(serverCmd)
+	serverCmd.AddCommand(serverPushCmd)
 	serverCmd.AddCommand(serverConnectCmd)
 	serverCmd.AddCommand(serverDisconnectCmd)
 	serverCmd.AddCommand(serverStatusCmd)
@@ -211,4 +218,87 @@ func runServerUseProject(cmd *cobra.Command, args []string) error {
     ui.Success("Directory associated with server project '%s'", name)
     ui.Info("Run 'enveil list' to see available variables")
     return nil
+}
+
+func runServerPush(cmd *cobra.Command, args []string) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	if !cfg.HasServer() {
+		return fmt.Errorf("no server configured, run 'enveil server connect' first")
+	}
+
+	if cfg.ActiveProject == "" {
+		return fmt.Errorf("no active project, run 'enveil init' in your project directory first")
+	}
+
+	// Abrir vault local
+	masterKeyHex, err := promptAndDeriveKey(cfg)
+	if err != nil {
+		return err
+	}
+
+	v, err := vault.Open(cfg.VaultPath, masterKeyHex)
+	if err != nil {
+		return err
+	}
+	defer v.Close()
+
+	// Obtener el proyecto local
+	projectID, _, err := v.GetProjectByName(cfg.ActiveProject)
+	if err != nil {
+		return fmt.Errorf("error looking up project: %w", err)
+	}
+	if projectID == 0 {
+		return fmt.Errorf("project '%s' not found in local vault", cfg.ActiveProject)
+	}
+
+	client := serverclient.New(cfg.ServerURL, cfg.ServerAPIKey)
+
+	// Crear el proyecto en el servidor si no existe
+	if err := client.EnsureProject(cfg.ActiveProject); err != nil {
+		return fmt.Errorf("error creating project on server: %w", err)
+	}
+
+	// Obtener todos los entornos locales
+	envs, err := v.ListEnvironments(projectID)
+	if err != nil {
+		return fmt.Errorf("error listing environments: %w", err)
+	}
+
+	totalVars := 0
+
+	for _, envName := range envs {
+		// Crear el entorno en el servidor
+		if err := client.EnsureEnvironment(cfg.ActiveProject, envName); err != nil {
+			return fmt.Errorf("error creating environment '%s' on server: %w", envName, err)
+		}
+
+		// Obtener el ID del entorno local
+		envID, err := v.GetEnvironment(projectID, envName)
+		if err != nil {
+			return fmt.Errorf("error getting environment '%s': %w", envName, err)
+		}
+
+		// Leer todas las variables del entorno
+		vars, err := v.GetVariables(envID)
+		if err != nil {
+			return fmt.Errorf("error reading variables for '%s': %w", envName, err)
+		}
+
+		// Subir cada variable al servidor
+		for key, value := range vars {
+			if err := client.SetVariable(cfg.ActiveProject, envName, key, value); err != nil {
+				return fmt.Errorf("error pushing variable '%s': %w", key, err)
+			}
+			totalVars++
+		}
+
+		ui.Info("Pushed environment '%s' (%d variables)", envName, len(vars))
+	}
+
+	ui.Success("Project '%s' pushed to server (%d variables total)", cfg.ActiveProject, totalVars)
+	return nil
 }
