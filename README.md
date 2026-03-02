@@ -261,41 +261,50 @@ For production, put the server behind a reverse proxy like nginx with HTTPS enab
 
 ### Team workflow
 
-**Admin (one time):**
+**Admin (one time setup):**
 
 ```bash
-# Start the server
+# 1. Start the server
 ENVEIL_API_KEY=shared-api-key ENVEIL_VAULT_PASSWORD=vault-pass ENVEIL_PORT=8080 enveil-server
 
-# Connect your own CLI to it
-enveil server connect http://your-server:8080 --key shared-api-key
-
-# Register your project on the server
+# 2. Register and import the project locally BEFORE connecting to the server
 cd ~/projects/myapp
 enveil init
-
-# Import your existing secrets
 enveil import .env
-```
 
-**Each developer (one time):**
-
-```bash
-# Connect to the server
+# 3. Connect to the server
 enveil server connect http://your-server:8080 --key shared-api-key
 
-# Associate their local directory with the shared project
+# 4. Push the local project to the server
+enveil server push
+```
+
+`server push` creates the project on the server if it does not exist, then uploads all environments and variables encrypted. From this point the server is the source of truth for the team.
+
+**Each developer (one time setup):**
+
+```bash
+# 1. Connect to the server
+enveil server connect http://your-server:8080 --key shared-api-key
+
+# 2. Associate the local directory with the project on the server
 cd ~/projects/myapp
 enveil server use-project myapp
+
+# 3. Run the app — no .env file needed
+enveil run npm run dev
 ```
 
 From that point, all `set`, `get`, `list`, `run`, `import`, `export`, `diff`, and `env` commands operate against the shared server. Variables set by one developer are immediately available to all others. No `.env` files are shared, committed, or sent over chat.
 
-**Checking server status:**
+**Server commands reference:**
 
 ```bash
-enveil server status      # verify connection
-enveil server disconnect  # switch back to local vault
+enveil server connect http://your-server:8080 --key shared-api-key   # connect to server
+enveil server push                                                     # push local project to server
+enveil server use-project                                        # associate directory with server project
+enveil server status                                                   # verify connection
+enveil server disconnect                                               # switch back to local vault
 ```
 
 ## Project structure
