@@ -124,6 +124,30 @@ enveil delete API_KEY
 
 Asks for confirmation before deleting.
 
+### Local overrides
+
+When connected to a team server, you can override specific variables locally without affecting other developers.
+```bash
+enveil set DATABASE_URL=localhost/myapp_dev --local
+```
+
+The override is saved to your local vault only — it is never pushed to the server. Other developers continue to see the original server value.
+
+Local overrides take precedence over server variables in all commands: `run`, `get`, and `list`.
+```bash
+enveil list
+# DATABASE_URL  =  *** [local override]
+# STRIPE_KEY    =  ***
+# 1 local override(s) — visible only on this machine
+```
+
+To remove a local override and return to the server value:
+```bash
+enveil delete DATABASE_URL --local
+```
+
+Deleting a variable from the server also removes its local override automatically.
+
 ### Managing environments
 
 Each project can have multiple environments. Enveil creates `development` by default.
