@@ -83,6 +83,18 @@ func (v *Vault) createSchema() error {
 		FOREIGN KEY (environment_id) REFERENCES environments(id),
 		UNIQUE(environment_id, key)
 	);
+
+	CREATE TABLE IF NOT EXISTS local_overrides (
+		id             INTEGER PRIMARY KEY AUTOINCREMENT,
+		project_name   TEXT NOT NULL,
+		env_name       TEXT NOT NULL,
+		key            TEXT NOT NULL,
+		value          TEXT NOT NULL,
+		created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(project_name, env_name, key)
+	);
+
 	`
 
 	_, err := v.db.Exec(schema)
@@ -359,4 +371,71 @@ func (v *Vault) GetProjectByName(name string) (int64, string, error) {
 	}
 
 	return id, path, nil
+}
+
+// SetLocalOverride saves or updates a local override for a variable.
+// Uses project and environment names directly since in server mode
+// those projects do not exist in the local vault.
+func (v *Vault) SetLocalOverride(project, env, key, value string) error {
+	_, err := v.db.Exec(`
+		INSERT INTO local_overrides (project_name, env_name, key, value)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(project_name, env_name, key)
+		DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+	`, project, env, key, value)
+	if err != nil {
+		return fmt.Errorf("error saving local override: %w", err)
+	}
+	return nil
+}
+
+// GetLocalOverride returns the local override value for a variable, if one exists.
+// Returns empty string and false if no override is set.
+func (v *Vault) GetLocalOverride(project, env, key string) (string, bool, error) {
+	var value string
+	err := v.db.QueryRow(`
+		SELECT value FROM local_overrides
+		WHERE project_name = ? AND env_name = ? AND key = ?
+	`, project, env, key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("error getting local override: %w", err)
+	}
+	return value, true, nil
+}
+
+// GetLocalOverrides returns all local overrides for a project/environment as a map.
+func (v *Vault) GetLocalOverrides(project, env string) (map[string]string, error) {
+	rows, err := v.db.Query(`
+		SELECT key, value FROM local_overrides
+		WHERE project_name = ? AND env_name = ?
+	`, project, env)
+	if err != nil {
+		return nil, fmt.Errorf("error reading local overrides: %w", err)
+	}
+	defer rows.Close()
+
+	overrides := make(map[string]string)
+	for rows.Next() {
+		var key, value string
+		if err := rows.Scan(&key, &value); err != nil {
+			return nil, fmt.Errorf("error reading override row: %w", err)
+		}
+		overrides[key] = value
+	}
+	return overrides, nil
+}
+
+// DeleteLocalOverride removes a local override for a variable.
+func (v *Vault) DeleteLocalOverride(project, env, key string) error {
+	_, err := v.db.Exec(`
+		DELETE FROM local_overrides
+		WHERE project_name = ? AND env_name = ? AND key = ?
+	`, project, env, key)
+	if err != nil {
+		return fmt.Errorf("error deleting local override: %w", err)
+	}
+	return nil
 }

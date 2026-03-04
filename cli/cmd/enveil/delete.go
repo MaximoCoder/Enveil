@@ -18,7 +18,10 @@ var deleteCmd = &cobra.Command{
 	RunE:  runDelete,
 }
 
+var deleteLocalFlag bool
+
 func init() {
+	deleteCmd.Flags().BoolVar(&deleteLocalFlag, "local", false, "Delete only the local override, leave the server variable intact")
 	rootCmd.AddCommand(deleteCmd)
 }
 
@@ -34,6 +37,11 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("enveil is not initialized, run 'enveil init' first")
 	}
 
+	// --local: only remove the local override
+	if deleteLocalFlag {
+		return deleteLocalOverride(cfg, key)
+	}
+
 	if cfg.HasServer() {
 		fmt.Printf("\n  Delete '%s' from %s? [y/N]: ", key, ui.EnvBadge(cfg.ActiveProject, cfg.ActiveEnv))
 		var response string
@@ -47,6 +55,12 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		if err := client.DeleteVariable(cfg.ActiveProject, cfg.ActiveEnv, key); err != nil {
 			return err
 		}
+
+		// Also remove local override if one exists, to avoid a ghost value
+		if err := removeLocalOverrideIfExists(cfg, key); err != nil {
+			return err
+		}
+
 		ui.Success("'%s' deleted from %s", key, ui.EnvBadge(cfg.ActiveProject, cfg.ActiveEnv))
 		return nil
 	}
@@ -100,4 +114,39 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	ui.Success("'%s' deleted from %s", key, ui.EnvBadge(cfg.ActiveProject, cfg.ActiveEnv))
 	return nil
+}
+
+func deleteLocalOverride(cfg *config.Config, key string) error {
+	masterKeyHex, err := promptAndDeriveKey(cfg)
+	if err != nil {
+		return err
+	}
+
+	v, err := vault.Open(cfg.VaultPath, masterKeyHex)
+	if err != nil {
+		return err
+	}
+	defer v.Close()
+
+	if err := v.DeleteLocalOverride(cfg.ActiveProject, cfg.ActiveEnv, key); err != nil {
+		return err
+	}
+
+	ui.Success("local override for '%s' removed — server value will be used", key)
+	return nil
+}
+
+func removeLocalOverrideIfExists(cfg *config.Config, key string) error {
+	masterKeyHex, err := promptAndDeriveKey(cfg)
+	if err != nil {
+		return err
+	}
+
+	v, err := vault.Open(cfg.VaultPath, masterKeyHex)
+	if err != nil {
+		return err
+	}
+	defer v.Close()
+
+	return v.DeleteLocalOverride(cfg.ActiveProject, cfg.ActiveEnv, key)
 }

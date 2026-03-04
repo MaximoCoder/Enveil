@@ -36,6 +36,19 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	var vars map[string]string
+	var overrides map[string]string
+
+	// Derive key once — used for local vault regardless of mode
+	masterKeyHex, err := promptAndDeriveKey(cfg)
+	if err != nil {
+		return err
+	}
+
+	localVault, err := vault.Open(cfg.VaultPath, masterKeyHex)
+	if err != nil {
+		return err
+	}
+	defer localVault.Close()
 
 	if cfg.HasServer() {
 		client := serverclient.New(cfg.ServerURL, cfg.ServerAPIKey)
@@ -43,19 +56,13 @@ func runList(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("error fetching variables from server: %w", err)
 		}
+
+		overrides, err = localVault.GetLocalOverrides(cfg.ActiveProject, cfg.ActiveEnv)
+		if err != nil {
+			return fmt.Errorf("error reading local overrides: %w", err)
+		}
 	} else {
-		masterKeyHex, err := promptAndDeriveKey(cfg)
-		if err != nil {
-			return err
-		}
-
-		v, err := vault.Open(cfg.VaultPath, masterKeyHex)
-		if err != nil {
-			return err
-		}
-		defer v.Close()
-
-		projectID, _, err := v.GetProjectByPath(getCurrentDir())
+		projectID, _, err := localVault.GetProjectByPath(getCurrentDir())
 		if err != nil {
 			return err
 		}
@@ -63,7 +70,7 @@ func runList(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("project not found in vault, run 'enveil init'")
 		}
 
-		envID, err := v.GetEnvironment(projectID, cfg.ActiveEnv)
+		envID, err := localVault.GetEnvironment(projectID, cfg.ActiveEnv)
 		if err != nil {
 			return err
 		}
@@ -71,7 +78,7 @@ func runList(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("environment '%s' not found", cfg.ActiveEnv)
 		}
 
-		vars, err = v.GetVariables(envID)
+		vars, err = localVault.GetVariables(envID)
 		if err != nil {
 			return err
 		}
@@ -79,33 +86,48 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	ui.Header(fmt.Sprintf("%s  %s", cfg.ActiveProject, ui.EnvBadge(cfg.ActiveProject, cfg.ActiveEnv)))
 
-	if len(vars) == 0 {
+	if len(vars) == 0 && len(overrides) == 0 {
 		ui.Muted("  No variables in this environment.")
 		fmt.Println()
 		return nil
 	}
 
-	// Find longest key for alignment
-	maxLen := 0
+	allKeys := make(map[string]struct{})
 	for k := range vars {
+		allKeys[k] = struct{}{}
+	}
+	for k := range overrides {
+		allKeys[k] = struct{}{}
+	}
+
+	maxLen := 0
+	for k := range allKeys {
 		if len(k) > maxLen {
 			maxLen = len(k)
 		}
 	}
 
-	// Sort keys
-	keys := make([]string, 0, len(vars))
-	for k := range vars {
+	keys := make([]string, 0, len(allKeys))
+	for k := range allKeys {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
+	localCount := 0
 	for _, k := range keys {
-		fmt.Printf("  %-*s  =  ***\n", maxLen, k)
+		if _, isOverride := overrides[k]; isOverride {
+			fmt.Printf("  %-*s  =  *** [local override]\n", maxLen, k)
+			localCount++
+		} else {
+			fmt.Printf("  %-*s  =  ***\n", maxLen, k)
+		}
 	}
 
 	fmt.Println()
-	ui.Muted("  %d variable(s) total", len(vars))
+	ui.Muted("  %d variable(s) total", len(allKeys))
+	if localCount > 0 {
+		ui.Muted("  %d local override(s) — visible only on this machine", localCount)
+	}
 	fmt.Println()
 	return nil
 }

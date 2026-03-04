@@ -71,6 +71,11 @@ func runServerConnect(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("could not connect to server: %w", err)
 	}
 
+	// Then validate the API key with an authenticated request
+	if _, err := client.ListProjects(); err != nil {
+		return fmt.Errorf("invalid API key: %w", err)
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		return err

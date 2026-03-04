@@ -19,7 +19,10 @@ var setCmd = &cobra.Command{
 	RunE:  runSet,
 }
 
+var setLocal bool
+
 func init() {
+	setCmd.Flags().BoolVar(&setLocal, "local", false, "Save as a local override (never pushed to server)")
 	rootCmd.AddCommand(setCmd)
 }
 
@@ -44,7 +47,12 @@ func runSet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no active project, run 'enveil init' in a project directory")
 	}
 
-	// Use server if configured
+	// --local: always goes to the local vault regardless of server mode
+	if setLocal {
+		return saveLocalOverride(cfg, key, value)
+	}
+
+	// Normal set: use server if configured
 	if cfg.HasServer() {
 		client := serverclient.New(cfg.ServerURL, cfg.ServerAPIKey)
 		if err := client.EnsureProject(cfg.ActiveProject); err != nil {
@@ -93,6 +101,27 @@ func runSet(cmd *cobra.Command, args []string) error {
 	}
 
 	ui.Success("'%s' saved in %s", key, ui.EnvBadge(cfg.ActiveProject, cfg.ActiveEnv))
+	return nil
+}
+
+func saveLocalOverride(cfg *config.Config, key, value string) error {
+	masterKeyHex, err := promptAndDeriveKey(cfg)
+	if err != nil {
+		return err
+	}
+
+	v, err := vault.Open(cfg.VaultPath, masterKeyHex)
+	if err != nil {
+		return err
+	}
+	defer v.Close()
+
+	if err := v.SetLocalOverride(cfg.ActiveProject, cfg.ActiveEnv, key, value); err != nil {
+		return err
+	}
+
+	ui.Success("'%s' saved as local override in %s", key, ui.EnvBadge(cfg.ActiveProject, cfg.ActiveEnv))
+	fmt.Fprintf(os.Stderr, "  this value is local to this machine and will not be pushed to the server\n")
 	return nil
 }
 

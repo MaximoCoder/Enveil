@@ -15,8 +15,6 @@ import (
 var runCmd = &cobra.Command{
 	Use:   "run <comando>",
 	Short: "Run a command with the active environment variables injected",
-	// DisableFlagParsing permite pasar flags al comando hijo sin que cobra las intercepte
-	// por ejemplo: enveil run npm run dev --watch
 	DisableFlagParsing: true,
 	Args:               cobra.MinimumNArgs(1),
 	RunE:               runRun,
@@ -38,12 +36,17 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	var vars map[string]string
 
-	// Use server if configured
 	if cfg.HasServer() {
 		client := serverclient.New(cfg.ServerURL, cfg.ServerAPIKey)
 		vars, err = client.GetVariables(cfg.ActiveProject, cfg.ActiveEnv)
 		if err != nil {
 			return fmt.Errorf("error fetching variables from server: %w", err)
+		}
+
+		// Apply local overrides on top of server variables
+		vars, err = applyLocalOverrides(cfg, vars)
+		if err != nil {
+			return err
 		}
 	} else {
 		masterKeyHex, err := promptAndDeriveKey(cfg)
@@ -79,7 +82,6 @@ func runRun(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Build environment and exec
 	env := os.Environ()
 	for k, v := range vars {
 		env = append(env, k+"="+v)
@@ -91,4 +93,39 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	return syscall.Exec(binary, args, env)
+}
+
+// applyLocalOverrides opens the local vault and merges any overrides
+// on top of the provided vars map. Local overrides always win.
+// Returns a new map — does not mutate the original.
+func applyLocalOverrides(cfg *config.Config, vars map[string]string) (map[string]string, error) {
+	masterKeyHex, err := promptAndDeriveKey(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	v, err := vault.Open(cfg.VaultPath, masterKeyHex)
+	if err != nil {
+		return nil, err
+	}
+	defer v.Close()
+
+	overrides, err := v.GetLocalOverrides(cfg.ActiveProject, cfg.ActiveEnv)
+	if err != nil {
+		return nil, fmt.Errorf("error reading local overrides: %w", err)
+	}
+
+	if len(overrides) == 0 {
+		return vars, nil
+	}
+
+	merged := make(map[string]string, len(vars))
+	for k, v := range vars {
+		merged[k] = v
+	}
+	for k, v := range overrides {
+		merged[k] = v
+	}
+
+	return merged, nil
 }
