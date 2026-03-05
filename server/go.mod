@@ -1,4 +1,4 @@
-module github.com/MaximoCoder/enveil-server
+module github.com/MaximoCoder/Enveil/server
 
 go 1.24.0
 

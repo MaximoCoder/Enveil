@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/MaximoCoder/enveil-core/detector"
-	"github.com/MaximoCoder/enveil-cli/internal/ui"
+	"github.com/MaximoCoder/Enveil/core/detector"
+	"github.com/MaximoCoder/Enveil/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 

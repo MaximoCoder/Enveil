@@ -1,4 +1,4 @@
-module github.com/MaximoCoder/enveil-core
+module github.com/MaximoCoder/Enveil/core
 
 go 1.24.0
 

@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/MaximoCoder/enveil-core/crypto"
-	"github.com/MaximoCoder/enveil-core/vault"
+	"github.com/MaximoCoder/Enveil/core/crypto"
+	"github.com/MaximoCoder/Enveil/core/vault"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )

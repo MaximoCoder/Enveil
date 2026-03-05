@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/MaximoCoder/enveil-core/config"
-	"github.com/MaximoCoder/enveil-cli/internal/daemon"
-	"github.com/MaximoCoder/enveil-cli/internal/ui"
-	"github.com/MaximoCoder/enveil-core/vault"
+	"github.com/MaximoCoder/Enveil/core/config"
+	"github.com/MaximoCoder/Enveil/cli/internal/daemon"
+	"github.com/MaximoCoder/Enveil/cli/internal/ui"
+	"github.com/MaximoCoder/Enveil/core/vault"
 	"github.com/spf13/cobra"
 )
 

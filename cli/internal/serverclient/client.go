@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/MaximoCoder/enveil-core/crypto"
+	"github.com/MaximoCoder/Enveil/core/crypto"
 )
 
 // Client is an HTTP client for the Enveil server

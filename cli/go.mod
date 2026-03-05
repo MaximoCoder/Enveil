@@ -1,4 +1,4 @@
-module github.com/MaximoCoder/enveil-cli
+module github.com/MaximoCoder/Enveil/cli
 
 go 1.24.0
 

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/MaximoCoder/enveil-cli/internal/serverclient"
-	"github.com/MaximoCoder/enveil-core/config"
-	"github.com/MaximoCoder/enveil-core/vault"
+	"github.com/MaximoCoder/Enveil/cli/internal/serverclient"
+	"github.com/MaximoCoder/Enveil/core/config"
+	"github.com/MaximoCoder/Enveil/core/vault"
 	"github.com/spf13/cobra"
 )
 

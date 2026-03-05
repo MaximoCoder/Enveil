@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 
-	"github.com/MaximoCoder/enveil-cli/internal/serverclient"
-	"github.com/MaximoCoder/enveil-cli/internal/ui"
-	"github.com/MaximoCoder/enveil-core/config"
-	"github.com/MaximoCoder/enveil-core/vault"
+	"github.com/MaximoCoder/Enveil/cli/internal/serverclient"
+	"github.com/MaximoCoder/Enveil/cli/internal/ui"
+	"github.com/MaximoCoder/Enveil/core/config"
+	"github.com/MaximoCoder/Enveil/core/vault"
 	"github.com/spf13/cobra"
 )
 

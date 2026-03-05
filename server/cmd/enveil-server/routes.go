@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/MaximoCoder/enveil-core/crypto"
+	"github.com/MaximoCoder/Enveil/core/crypto"
 	"github.com/go-chi/chi/v5"
 )
 
